@@ -1,138 +1,75 @@
+require_relative './language'
 require_relative './file_reader'
 require_relative './point'
+require_relative './state'
 
-def deep_dup(obj)
-  Marshal.load(Marshal.dump(obj))
-end
+# TODO: Multi-bird: Need to be able to PUSH the other birds.
+# TODO: Make it so that all birds fall on a move, not just the one moving.
+# TODO: Implement Level 7 and 13. Level 42.
 
 lines = FileReader.read_file(ARGV[0])
 
-first_state = {
-  move_history: '',
-  fruit_count: 0,
-  bird: []
-}
+first_state = State.new(
+  level: {},
+  birds: {},
+  move_history: []
+)
 
-lines.each_with_index do |line, i|
-  line.chars.each_with_index do |char, j|
-    first_state[Point.new(j, i)] = char if char != '.' && !char.match?(/\d/)
+lines = lines.split('')
 
-    if char.match?(/\d/)
-      first_state[:bird][char.to_i - 1] = Point.new(j, i)
+lines.first.each_with_index do |line, i|
+  if line.chars.uniq == ['-']
+    first_state.bottom_y = i
+  else
+    line.chars.each_with_index do |char, j|
+      first_state.level[Point.new(j, i)] = char if char != '.'
     end
-    first_state[:fruit_count] += 1 if char == 'F'
   end
 end
 
-$max_x = lines.first.length - 1
-$max_y = lines.count - 1
+lines.last.each_with_index do |line, i|
+  coords_arr = line.split(',').map(&:to_i)
+  bird = []
+  until coords_arr.empty?
+    bird << Point.new(coords_arr.shift, coords_arr.shift)
+  end
+  first_state.birds[i] = bird
+end
 
-$states = [first_state]
+states = [first_state]
 evaluated_states = []
 
-def try_for_next(state, new_point, move)
-  moved_to_star = state[new_point] == '*'
-  # Add to move history
-  state[:move_history] << move
-
-  # Add to bird/sub from fruit if eating fruit (clear fruit)
-  if state[new_point] == 'F'
-    state[:fruit_count] -= 1
-    state.delete(new_point)
-    state[:bird].unshift(new_point)
-  else
-    # Pop end of bird, add new spot to bird
-    state[:bird].unshift(new_point)
-    state[:bird].pop
-  end
-
-  # Check for win condition
-  if state[:fruit_count] == 0 && moved_to_star
-    puts state[:move_history]
-    exit
-  end
-  # Now do falling if necessary.
-  should_do_next_state = true
-  loop do
-    # Each loop means, we fall one spot
-    # First check if we hit walls or fruit
-    stop_falling = false
-    state[:bird].each do |point|
-      if ['F', 'N'].include?(state[point.py])
-        stop_falling = true
-        break
-      end
-    end
-    break if stop_falling
-
-    # Check if we hit spikes. If so, we die and this new state is bad.
-    hitting_x = false
-    state[:bird].each do |point|
-      if ['x'].include?(state[point.py]) || point.py.y > 13
-        hitting_x = true
-        break
-      end
-    end
-
-    if hitting_x
-      should_do_next_state = false
-      break
-    end
-
-    # We now need to drop the bird one spot.
-    state[:bird].each_with_index do |point, x|
-      state[:bird][x] = point.py
-    end
-    # loop complete, see if we will fall again!
-  end
-
-  if should_do_next_state
-    $states << state
-  end
-
-end
+MAX_DEPTH = nil
 
 # BFS
-until $states.empty?
-  current_state = $states.shift
+until states.empty?
+  current_state = states.shift
 
-  state_hash = deep_dup(current_state)
-  state_hash.delete(:move_history)
-  state_hash = state_hash.to_s.hash
+  next if MAX_DEPTH && current_state.move_history.count > MAX_DEPTH
 
-  next if evaluated_states.include?(state_hash)
-  evaluated_states << state_hash
+  next if evaluated_states.include?(current_state.comparison_hash)
+  evaluated_states << current_state.comparison_hash
 
-  puts current_state[:move_history].length
+  # Debug
+  puts current_state.move_history.count
   puts current_state.inspect
 
-  # Check each direction of possible move
-  # UP
-  if [nil, 'F', '*'].include?(current_state[current_state[:bird][0].my]) &&
-    !current_state[:bird].include?(current_state[:bird][0].my)
+  # Check each direction of possible move, for each bird
+  current_state.birds.each do |i, bird|
+    %w(U L D R).each do |move|
+      if current_state.can_bird_move?(bird_index: i, move: move)
+        new_state = current_state.dup
+        new_state.execute_move(bird_index: i, move: move)
 
-    try_for_next(deep_dup(current_state), current_state[:bird][0].my, 'U')
+        if new_state.win?
+          puts new_state.move_history.join(' ')
+          exit
+        end
+
+        unless new_state.death?
+          states << new_state
+        end
+      end
+    end
   end
-
-  # DOWN
-  if [nil, 'F', '*'].include?(current_state[current_state[:bird][0].py]) &&
-    !current_state[:bird].include?(current_state[:bird][0].py)
-
-    try_for_next(deep_dup(current_state), current_state[:bird][0].py, 'D')
-  end
-
-  # LEFT
-  if [nil, 'F', '*'].include?(current_state[current_state[:bird][0].mx]) &&
-    !current_state[:bird].include?(current_state[:bird][0].mx)
-
-    try_for_next(deep_dup(current_state), current_state[:bird][0].mx, 'L')
-  end
-
-  # RIGHT
-  if [nil, 'F', '*'].include?(current_state[current_state[:bird][0].px]) &&
-    !current_state[:bird].include?(current_state[:bird][0].px)
-
-    try_for_next(deep_dup(current_state), current_state[:bird][0].px, 'R')
-  end
-
 end
