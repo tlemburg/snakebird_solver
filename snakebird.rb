@@ -3,9 +3,11 @@ require_relative './file_reader'
 require_relative './point'
 require_relative './state'
 
-# TODO: Multi-bird: Need to be able to PUSH the other birds.
-# TODO: Make it so that all birds fall on a move, not just the one moving.
-# TODO: Implement Level 7 and 13. Level 42.
+# TODO: Fix bug in multi-bird falling; all things falling need to
+# happen simultaneously and with a graph.
+#
+
+start_time = Time.now
 
 lines = FileReader.read_file(ARGV[0])
 
@@ -63,6 +65,9 @@ until states.empty?
 
         if new_state.win?
           puts new_state.move_history.join(' ')
+          puts "STATS:"
+          puts "TOTAL TIME: #{(Time.now - start_time).to_i}s"
+          puts "#{evaluated_states.count} total states considered"
           exit
         end
 
